@@ -246,9 +246,11 @@ type IoctlRequest = c_int;
 /// let open_flags = O_RDWR | O_CLOEXEC;
 /// let kvm_fd = unsafe { open("/dev/kvm\0".as_ptr() as *const c_char, open_flags) };
 ///
-/// let ret = unsafe { ioctl(&File::from_raw_fd(kvm_fd), KVM_GET_API_VERSION()) };
+/// if kvm_fd >= 0 {
+///     let ret = unsafe { ioctl(&File::from_raw_fd(kvm_fd), KVM_GET_API_VERSION()) };
 ///
-/// assert_eq!(ret as u32, KVM_API_VERSION);
+///     assert_eq!(ret as u32, KVM_API_VERSION);
+/// }
 /// ```
 pub unsafe fn ioctl<F: AsRawFd>(fd: &F, req: c_ulong) -> c_int {
     libc::ioctl(fd.as_raw_fd(), req as IoctlRequest, 0)
@@ -286,14 +288,16 @@ pub unsafe fn ioctl<F: AsRawFd>(fd: &F, req: c_ulong) -> c_int {
 /// let open_flags = O_RDWR | O_CLOEXEC;
 /// let kvm_fd = unsafe { open("/dev/kvm\0".as_ptr() as *const c_char, open_flags) };
 ///
-/// let ret = unsafe {
-///     ioctl_with_val(
-///         &File::from_raw_fd(kvm_fd),
-///         KVM_CHECK_EXTENSION(),
-///         KVM_CAP_USER_MEMORY as c_ulong,
-///     )
-/// };
-/// assert!(ret > 0);
+/// if kvm_fd >= 0 {
+///     let ret = unsafe {
+///         ioctl_with_val(
+///             &File::from_raw_fd(kvm_fd),
+///             KVM_CHECK_EXTENSION(),
+///             KVM_CAP_USER_MEMORY as c_ulong,
+///         )
+///     };
+///     assert!(ret > 0);
+/// }
 /// ```
 pub unsafe fn ioctl_with_val<F: AsRawFd>(fd: &F, req: c_ulong, arg: c_ulong) -> c_int {
     libc::ioctl(fd.as_raw_fd(), req as IoctlRequest, arg)

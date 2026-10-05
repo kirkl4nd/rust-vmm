@@ -24,7 +24,13 @@ pub fn timestamp_cycles() -> u64 {
 
     #[cfg(not(target_arch = "x86_64"))]
     {
+        use std::sync::atomic::{AtomicU64, Ordering};
+
         const MONOTONIC_CLOCK_MULTPIPLIER: u64 = 1_000_000_000;
+
+        // CLOCK_MONOTONIC may have a coarse resolution (e.g. 1us on macOS), so
+        // back-to-back reads can be equal. Keep the result strictly increasing.
+        static LAST: AtomicU64 = AtomicU64::new(0);
 
         let mut ts = libc::timespec {
             tv_sec: 0,
@@ -34,7 +40,15 @@ pub fn timestamp_cycles() -> u64 {
         unsafe {
             libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts);
         }
-        (ts.tv_sec as u64) * MONOTONIC_CLOCK_MULTPIPLIER + (ts.tv_nsec as u64)
+        let now = (ts.tv_sec as u64) * MONOTONIC_CLOCK_MULTPIPLIER + (ts.tv_nsec as u64);
+        let mut last = LAST.load(Ordering::Relaxed);
+        loop {
+            let next = now.max(last.wrapping_add(1));
+            match LAST.compare_exchange_weak(last, next, Ordering::Relaxed, Ordering::Relaxed) {
+                Ok(_) => return next,
+                Err(current) => last = current,
+            }
+        }
     }
 }
 

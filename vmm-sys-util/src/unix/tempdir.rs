@@ -143,7 +143,9 @@ mod tests {
         let path = t.as_path();
         assert!(path.exists());
         assert!(path.is_dir());
-        assert!(path.starts_with(temp_dir()));
+        let expected_base = temp_dir().canonicalize().unwrap();
+        let canonical_path = path.canonicalize().unwrap();
+        assert!(canonical_path.starts_with(&expected_base));
     }
 
     #[test]
@@ -180,17 +182,19 @@ mod tests {
 
     #[test]
     fn test_create_dir_in() {
-        let t = TempDir::new_in(Path::new("/tmp")).unwrap();
-        let path = t.as_path();
-        assert!(path.exists());
-        assert!(path.is_dir());
-        assert!(path.starts_with("/tmp/"));
+        let base = Path::new("/tmp").canonicalize().unwrap();
 
         let t = TempDir::new_in(Path::new("/tmp")).unwrap();
-        let path = t.as_path();
+        let path = t.as_path().canonicalize().unwrap();
         assert!(path.exists());
         assert!(path.is_dir());
-        assert!(path.starts_with("/tmp"));
+        assert!(path.starts_with(&base));
+
+        let t = TempDir::new_in(Path::new("/tmp")).unwrap();
+        let path = t.as_path().canonicalize().unwrap();
+        assert!(path.exists());
+        assert!(path.is_dir());
+        assert!(path.starts_with(&base));
     }
 
     #[test]

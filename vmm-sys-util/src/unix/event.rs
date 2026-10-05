@@ -99,9 +99,42 @@ pub struct EventConsumer {
 
 impl EventConsumer {
     /// Read a value from the EventConsumer.
+    ///
+    /// On platforms where the consumer is backed by a pipe, any further pending
+    /// notifications are drained as well, so that, like an eventfd, a single
+    /// `consume()` resets the event. Otherwise unread notifications would
+    /// accumulate in the pipe, and an edge-triggered poller would not report
+    /// them again until the pipe is full and further notifications are lost.
     pub fn consume(&self) -> Result<(), io::Error> {
         let mut buf = [0u8; size_of::<u64>()];
-        (&self.fd).read_exact(buf.as_mut_slice()).map(|_| Ok(()))?
+        (&self.fd).read_exact(buf.as_mut_slice())?;
+        #[cfg(not(any(target_os = "linux", target_os = "android")))]
+        self.drain()?;
+        Ok(())
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    fn drain(&self) -> Result<(), io::Error> {
+        let mut buf = [0u8; 512];
+        loop {
+            let mut pending: libc::c_int = 0;
+            // SAFETY: FIONREAD writes a single c_int to the provided pointer.
+            let ret = unsafe { libc::ioctl(self.fd.as_raw_fd(), libc::FIONREAD, &mut pending) };
+            if ret < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            if pending <= 0 {
+                return Ok(());
+            }
+            let len = buf.len().min(pending as usize);
+            match (&self.fd).read(&mut buf[..len]) {
+                Ok(0) => return Ok(()),
+                Ok(_) => {}
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => return Ok(()),
+                Err(e) => return Err(e),
+            }
+        }
     }
 
     /// Clone this EventConsumer.
@@ -277,6 +310,18 @@ mod tests {
             .expect("Failed to create notifier and consumer");
         notifier.notify().unwrap();
         assert!(consumer.consume().is_ok());
+    }
+
+    #[test]
+    fn test_consume_resets_event() {
+        let (consumer, notifier) = new_event_consumer_and_notifier(EventFlag::NONBLOCK)
+            .expect("Failed to create notifier and consumer");
+        for _ in 0..16 {
+            notifier.notify().unwrap();
+        }
+        consumer.consume().unwrap();
+        let err = consumer.consume().unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::WouldBlock);
     }
 
     #[test]

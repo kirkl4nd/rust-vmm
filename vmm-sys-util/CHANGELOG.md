@@ -12,6 +12,17 @@
   `linux::aio::IoContext::submit` as unsafe to reflect that callers must uphold
   the safety requirements for submitted buffers.
 
+### Fixed
+
+- `EventConsumer::consume()` on pipe-backed (non-Linux) notifiers now drains
+  every pending notification, matching eventfd. Without this, coalesced kicks
+  stay readable only until the next edge-triggered poll, then stall.
+- `timestamp_cycles()` on non-x86 is strictly increasing, so the rand tests
+  no longer depend on clock resolution.
+- TempDir tests compare canonical paths, so they pass when `$TMPDIR` is a
+  symlink (as on macOS).
+- ioctl doctests skip their assertions when `/dev/kvm` cannot be opened.
+
 ## v0.15.0
 
 ### Added
